@@ -4,19 +4,7 @@
  * Created: 11/1/2017 2:12:29 PM
  * Author : CIT-Labs
  * 
-#define F_CPU 16000000UL
-#include <avr/io.h>
-#include "serial.h"
-
-/*int main(void)
-{
-	init_uart();
-	printf("Hello World");
-    /* Replace with your application code */
-   /* while (1) 
-    {
-    }
-}*/
+*/
 
 #define F_CPU 16000000UL
 #include <avr/io.h>
