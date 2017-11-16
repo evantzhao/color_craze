@@ -47,6 +47,8 @@
 #define BLUE_LOW 150
 #define BLUE_HIGH 500
 
+enum states { FIND_YELLOW, MOVE_BACK, MOVE_F_THEN_B, NONE }
+
 int period = 0;
 int timer_value = 0;
 
@@ -150,66 +152,7 @@ void disableLED() {
 }
 
 void moveForwardAndBack() {
-	runLeftMotors(FORWARD);
-	runRightMotors(FORWARD);
-
-	_delay_ms(3000);
-
-	stopMotors(ALL);
-
-	runLeftMotors(BACKWARD);
-	runRightMotors(BACKWARD);
-
-	_delay_ms(3000);
-}
-
-int isBlue(int input) {
-	return input >= BLUE_LOW && input <= BLUE_HIGH;
-}
-
-void readColor() {
-	period = getColor();    //read color sensor
-
-	printf("Period: %u[microseconds]\n", period);
-
-	if(isBlue(period)) {
-		enableLED();
-	} else {
-		disableLED();
-	}
-}
-
-int main(void)
-{
-	init_uart();    //initialize serial
-	initMotors();	// Initialize the motor systems.
-	initColor();   //initialize color sensor
-	initLED();     //initialize external LED
-	sei();      //enable global interrupts
-	
-	_delay_ms(2000);
 	while(1) {
-		runRightMotors(BACKWARD);
-		runLeftMotors(BACKWARD);
-		/*
-		readColor();
-		while(isBlue(period)) {
-			runRightMotors(FORWARD);
-			runLeftMotors(FORWARD);
-			_delay_ms(100);
-			readColor();
-		}
-		
-		stopMotors(ALL);
-		runRightMotors(FORWARD);
-		runLeftMotors(BACKWARD);
-		*/
-		while(1) {
-			_delay_ms(1000);			
-		}
-		
-
-		/*
 		enableLED();
 		runRightMotors(FORWARD);
 		runLeftMotors(FORWARD);
@@ -231,7 +174,77 @@ int main(void)
 		stopMotors(ALL);
 		
 		_delay_ms(1000);
-		*/
+	}
+}
+
+int isBlue(int input) {
+	return input >= BLUE_LOW && input <= BLUE_HIGH;
+}
+
+void readColor() {
+	period = getColor();    //read color sensor
+
+	printf("Period: %u[microseconds]\n", period);
+
+	if(isBlue(period)) {
+		enableLED();
+	} else {
+		disableLED();
+	}
+}
+
+void move_back() {
+	while(1) {
+		runRightMotors(BACKWARD);
+		runLeftMotors(BACKWARD);		
+	}
+}
+
+void find_yellow() {
+	readColor();
+	while(isBlue(period)) {
+		runRightMotors(FORWARD);
+		runLeftMotors(FORWARD);
+		_delay_ms(100);
+		readColor();
+	}
+	
+	stopMotors(ALL);
+
+	while(1) {
+		runRightMotors(FORWARD);
+		runLeftMotors(BACKWARD);	
+	}
+}
+
+int main(void)
+{
+	init_uart();    //initialize serial
+	initMotors();	// Initialize the motor systems.
+	initColor();   //initialize color sensor
+	initLED();     //initialize external LED
+	sei();      //enable global interrupts
+	
+	_delay_ms(2000);
+
+	states state = MOVE_BACK;
+
+	while(1) {
+		switch(state) {
+
+		case MOVE_BACK:
+			move_back();
+			break;
+		case FIND_YELLOW:
+			find_yellow();
+			break;
+		case MOVE_F_THEN_B:
+			moveForwardAndBack();
+			break;
+		default:
+			_delay_ms(100);
+			break;
+		}		
 	}
 }
 
