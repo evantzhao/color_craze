@@ -12,7 +12,7 @@
  * ************************************************
  * 
  * Left Motor P0		->	PB2
- * Left Motor P1		->	PB3
+ * Left Motor P1		->	PB3		(PWM)
  * Right Motor P0		->	PB4
  * Right Motor P1		->	PB5
  *
@@ -108,6 +108,7 @@ ISR(PCINT0_vect) {
 */
 void initColor() {
 	DDRB	&=	0b11111110;		//set PB0 to input for color sensor output
+	// DDRB &= (1 << DDB0);
 	PCICR	|=	0b00000001;		//enable PCI0
 	PCMSK0	|=	0b00000001;		//enable PCINT0 interrupt
 
@@ -151,6 +152,37 @@ void disableLED() {
 	PORTB &= 0b11111101;  //sets PB1 to low
 }
 
+int isBlue(int input) {
+	return input >= BLUE_LOW && input <= BLUE_HIGH;
+}
+
+void readColor() {
+	period = getColor();    //read color sensor
+
+	printf("Period: %u[microseconds]\n", period);
+
+	if(isBlue(period)) {
+		enableLED();
+	} else {
+		disableLED();
+	}
+}
+
+/************************************************
+* PWM Generation Code *
+*************************************************/
+
+void initPWM() {
+	OCR2A = 128;							// Set PWM for 50% duty cycle
+
+	TCCR2A |= (1 << COM2A1);					// Set non-inverting mode
+	TCCR2A &= 0b10111111;
+
+	TCCR2A |= (1 << WGM21) | (1 << WGM20);	// Set fast PWM mode
+
+	TCCR2B |= (1 << CS21);					// Set prescaler to 8 and start PWM. Write this to all zeros to kill the PWM signal.
+}
+
 void moveForwardAndBack() {
 	while(1) {
 		enableLED();
@@ -174,22 +206,6 @@ void moveForwardAndBack() {
 		stopMotors(ALL);
 		
 		_delay_ms(1000);
-	}
-}
-
-int isBlue(int input) {
-	return input >= BLUE_LOW && input <= BLUE_HIGH;
-}
-
-void readColor() {
-	period = getColor();    //read color sensor
-
-	printf("Period: %u[microseconds]\n", period);
-
-	if(isBlue(period)) {
-		enableLED();
-	} else {
-		disableLED();
 	}
 }
 
