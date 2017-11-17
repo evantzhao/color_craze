@@ -11,10 +11,10 @@
  * Wiring configurations:
  * ************************************************
  * 
- * Left Motor P0		->	PB2
- * Left Motor P1		->	PB3		(PWM)
- * Right Motor P0		->	PB4
- * Right Motor P1		->	PB5
+ * Left Motor P0 (yellow)		->	PB5
+ * Left Motor P1 (green)		->	PB3		(PWM)
+ * Right Motor P0 (yellow)		->	PB4
+ * Right Motor P1 (green)		->	PD3		(PWM)	(OCR2B)
  *
  * --------------------------------
  *
@@ -52,46 +52,72 @@ enum states { FIND_YELLOW, MOVE_BACK, MOVE_F_THEN_B, NONE };
 int period = 0;
 int timer_value = 0;
 
-// Setting the motors. Assumes they are on PB2-5. Upper most is leftp0. then leftp1. mirrored config for right.
+// Note that these PWM's only run in one direction. 
+void runPWM(int side, int magnitude) {
+	if(side == LEFT) {
+		OCR2A = magnitude;			// Set PWM for 50% duty cycle
+	} else if(side == RIGHT) {
+		OCR2B = magnitude;
+	}
+	return;
+}
+
+// Setting the motors. Assumes they are on PB3-5, and PD3.
 void initMotors() {
-	DDRB |= 0b00111100;
+	DDRB |= 0b00111000;
+	DDRD |= 0b00001000;
 }
 
 void stopMotors(int arg) {
 	switch(arg) {
 		case RIGHT:
-			PORTB &= 0b11110011;
+			PORTB &= 0b11101111;
+			runPWM(RIGHT, 0);
 			break; /* optional */
 
 		case LEFT:
-			PORTB &= 0b11001111;
+			PORTB &= 0b11011111;
+			runPWM(LEFT, 0);
 			break; /* optional */
 
 		case ALL:
-			PORTB &= 0b11000011;
+			PORTB &= 0b11001111;
+			runPWM(LEFT, 0);
+			runPWM(RIGHT, 0);
 			break;
 	}
 	return;
 }
 
-void runLeftMotors(int direction) {
+void runLeftMotors(int direction, int magnitude) {
 	if(direction == FORWARD) {
-		PORTB |= 0b00100000;
-		PORTB &= 0b11101111;
-	} else if(direction == BACKWARD) {
-		PORTB |= 0b00010000;
 		PORTB &= 0b11011111;
+		runPWM(LEFT, magnitude);
+	} else if(direction == BACKWARD) {
+		runPWM(LEFT, 0);
+		PORTB |= 0b00100000;
 	}
 }
 
-void runRightMotors(int direction) {
+void runRightMotors(int direction, int magnitude) {
 	if(direction == FORWARD) {
-		PORTB |= 0b00001000;
-		PORTB &= 0b11111011;
+		PORTB &= 0b11101111;
+		runPWM(RIGHT, magnitude);
 	} else if(direction == BACKWARD) {
-		PORTB |= 0b00000100;
-		PORTB &= 0b11110111;
+		runPWM(RIGHT, 0);
+		PORTB |= 0b00010000;
 	}	
+}
+
+void uturn() {
+	runLeftMotors(FORWARD, 256);
+	runRightMotors(BACKWARD, 256);
+
+	_delay_ms(200);
+
+	stopMotors();
+
+	return;
 }
 
 /* 
@@ -174,29 +200,28 @@ void readColor() {
 
 void initPWM() {
 	DDRB |= 0b00001000;
-	OCR2A = 128;							// Set PWM for 50% duty cycle
+	OCR2A = 128;			// Set PWM for 50% duty cycle
+	OCR2B = 128;			// Set PWM for 50% duty cycle
 
 	// TCCR2A |= (1 << COM2A1);					// Set non-inverting mode
 	TCCR2A |= 0b10000000;
-	TCCR2A &= 0b10111111;
+	TCCR2A &= 0b10111111;	// Set the first PWM to be non-inverting mode.
+
+	TCCR2A |= 0b00100000;
+	TCCR2A &= 0b11101111;	// Set the second PWM to be non-inverting mode. 
 
 	TCCR2A |= 0b00000011;	// Set fast PWM mode
 	TCCR2B &= 0b11110111;
 
 	TCCR2B |= 0b00000010;
 	TCCR2B &= 0b11111010;	// Set prescaler to 8 and start PWM. Write this to all zeros to kill the PWM signal.
-	
-	TCCR2A |= 0b00100000;
-	TCCR2A &= 0b11101111;	// Set the second PWM
-	
-	
 }
 
 void moveForwardAndBack() {
 	while(1) {
 		enableLED();
-		runRightMotors(FORWARD);
-		runLeftMotors(FORWARD);
+		runRightMotors(FORWARD, 256);
+		runLeftMotors(FORWARD, 256);
 
 		_delay_ms(3000);
 
@@ -206,8 +231,8 @@ void moveForwardAndBack() {
 		_delay_ms(1000);
 		
 		enableLED();
-		runRightMotors(BACKWARD);
-		runLeftMotors(BACKWARD);
+		runRightMotors(BACKWARD, 0);
+		runLeftMotors(BACKWARD, 0);
 
 		_delay_ms(3000);
 		
@@ -220,16 +245,16 @@ void moveForwardAndBack() {
 
 void move_back() {
 	while(1) {
-		runRightMotors(BACKWARD);
-		runLeftMotors(BACKWARD);		
+		runRightMotors(BACKWARD, 256);
+		runLeftMotors(BACKWARD, 256);		
 	}
 }
 
 void find_yellow() {
 	readColor();
 	while(isBlue(period)) {
-		runRightMotors(FORWARD);
-		runLeftMotors(FORWARD);
+		runRightMotors(FORWARD, 256);
+		runLeftMotors(FORWARD, 256);
 		_delay_ms(100);
 		readColor();
 	}
@@ -237,8 +262,8 @@ void find_yellow() {
 	stopMotors(ALL);
 
 	while(1) {
-		runRightMotors(FORWARD);
-		runLeftMotors(BACKWARD);	
+		runRightMotors(FORWARD, 256);
+		runLeftMotors(BACKWARD, 0);	
 	}
 }
 
