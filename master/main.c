@@ -47,7 +47,7 @@
 #define BLUE_LOW 150
 #define BLUE_HIGH 500
 
-enum states { FIND_YELLOW, MOVE_BACK, MOVE_F_THEN_B, NONE }
+enum states { FIND_YELLOW, MOVE_BACK, MOVE_F_THEN_B, NONE };
 
 int period = 0;
 int timer_value = 0;
@@ -173,14 +173,23 @@ void readColor() {
 *************************************************/
 
 void initPWM() {
+	DDRB |= 0b00001000;
 	OCR2A = 128;							// Set PWM for 50% duty cycle
 
-	TCCR2A |= (1 << COM2A1);					// Set non-inverting mode
+	// TCCR2A |= (1 << COM2A1);					// Set non-inverting mode
+	TCCR2A |= 0b10000000;
 	TCCR2A &= 0b10111111;
 
-	TCCR2A |= (1 << WGM21) | (1 << WGM20);	// Set fast PWM mode
+	TCCR2A |= 0b00000011;	// Set fast PWM mode
+	TCCR2B &= 0b11110111;
 
-	TCCR2B |= (1 << CS21);					// Set prescaler to 8 and start PWM. Write this to all zeros to kill the PWM signal.
+	TCCR2B |= 0b00000010;
+	TCCR2B &= 0b11111010;	// Set prescaler to 8 and start PWM. Write this to all zeros to kill the PWM signal.
+	
+	TCCR2A |= 0b00100000;
+	TCCR2A &= 0b11101111;	// Set the second PWM
+	
+	
 }
 
 void moveForwardAndBack() {
@@ -236,14 +245,16 @@ void find_yellow() {
 int main(void)
 {
 	init_uart();    //initialize serial
-	initMotors();	// Initialize the motor systems.
-	initColor();   //initialize color sensor
+	// initMotors();	// Initialize the motor systems.
+	initPWM();
+	// initColor();   //initialize color sensor
 	initLED();     //initialize external LED
+	enableLED();
 	sei();      //enable global interrupts
 	
 	_delay_ms(2000);
 
-	states state = MOVE_BACK;
+	enum states state = NONE;
 
 	while(1) {
 		switch(state) {
@@ -258,7 +269,10 @@ int main(void)
 			moveForwardAndBack();
 			break;
 		default:
-			_delay_ms(100);
+			_delay_ms(1000);
+			OCR2A = 128;
+			_delay_ms(1000);
+			OCR2A = 64;
 			break;
 		}		
 	}
