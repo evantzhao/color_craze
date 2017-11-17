@@ -11,9 +11,9 @@
  * Wiring configurations:
  * ************************************************
  * 
- * Left Motor P0 (yellow)		->	PB5
- * Left Motor P1 (green)		->	PB3		(PWM)
- * Right Motor P0 (yellow)		->	PB4
+ * Left Motor P0 (green)		->	PB5
+ * Left Motor P1 (blue)			->	PB3		(PWM)
+ * Right Motor P0 (blue)		->	PB4
  * Right Motor P1 (green)		->	PD3		(PWM)	(OCR2B)
  *
  * --------------------------------
@@ -47,7 +47,7 @@
 #define BLUE_LOW 150
 #define BLUE_HIGH 500
 
-enum states { FIND_YELLOW, MOVE_BACK, MOVE_F_THEN_B, NONE };
+enum states { FIND_YELLOW, MOVE_BACK, MOVE_F_THEN_B, NONE, TESTING, UTURN };
 
 int period = 0;
 int timer_value = 0;
@@ -59,13 +59,13 @@ void runPWM(int side, int magnitude) {
 	} else if(side == RIGHT) {
 		OCR2B = magnitude;
 	}
-	return;
 }
 
 // Setting the motors. Assumes they are on PB3-5, and PD3.
 void initMotors() {
 	DDRB |= 0b00111000;
 	DDRD |= 0b00001000;
+	PORTB &= 0b11001111;
 }
 
 void stopMotors(int arg) {
@@ -110,12 +110,12 @@ void runRightMotors(int direction, int magnitude) {
 }
 
 void uturn() {
-	runLeftMotors(FORWARD, 256);
-	runRightMotors(BACKWARD, 256);
+	runLeftMotors(FORWARD, 255);
+	runRightMotors(BACKWARD, 255);
 
-	_delay_ms(200);
+	_delay_ms(1260);
 
-	stopMotors();
+	stopMotors(ALL);
 
 	return;
 }
@@ -199,9 +199,8 @@ void readColor() {
 *************************************************/
 
 void initPWM() {
-	DDRB |= 0b00001000;
-	OCR2A = 128;			// Set PWM for 50% duty cycle
-	OCR2B = 128;			// Set PWM for 50% duty cycle
+	OCR2A = 0;			// Set PWM for 0% duty cycle
+	OCR2B = 0;			// Set PWM for 0% duty cycle
 
 	// TCCR2A |= (1 << COM2A1);					// Set non-inverting mode
 	TCCR2A |= 0b10000000;
@@ -220,8 +219,8 @@ void initPWM() {
 void moveForwardAndBack() {
 	while(1) {
 		enableLED();
-		runRightMotors(FORWARD, 256);
-		runLeftMotors(FORWARD, 256);
+		runRightMotors(FORWARD, 255);
+		runLeftMotors(FORWARD, 255);
 
 		_delay_ms(3000);
 
@@ -245,16 +244,16 @@ void moveForwardAndBack() {
 
 void move_back() {
 	while(1) {
-		runRightMotors(BACKWARD, 256);
-		runLeftMotors(BACKWARD, 256);		
+		runRightMotors(BACKWARD, 255);
+		runLeftMotors(BACKWARD, 255);		
 	}
 }
 
 void find_yellow() {
 	readColor();
 	while(isBlue(period)) {
-		runRightMotors(FORWARD, 256);
-		runLeftMotors(FORWARD, 256);
+		runRightMotors(FORWARD, 255);
+		runLeftMotors(FORWARD, 255);
 		_delay_ms(100);
 		readColor();
 	}
@@ -262,7 +261,7 @@ void find_yellow() {
 	stopMotors(ALL);
 
 	while(1) {
-		runRightMotors(FORWARD, 256);
+		runRightMotors(FORWARD, 255);
 		runLeftMotors(BACKWARD, 0);	
 	}
 }
@@ -270,16 +269,15 @@ void find_yellow() {
 int main(void)
 {
 	init_uart();    //initialize serial
-	// initMotors();	// Initialize the motor systems.
+	initMotors();	// Initialize the motor systems.
 	initPWM();
-	// initColor();   //initialize color sensor
+	initColor();   //initialize color sensor
 	initLED();     //initialize external LED
-	enableLED();
 	sei();      //enable global interrupts
 	
-	_delay_ms(2000);
+	_delay_ms(1000);
 
-	enum states state = NONE;
+	enum states state = MOVE_F_THEN_B;
 
 	while(1) {
 		switch(state) {
@@ -291,13 +289,59 @@ int main(void)
 			find_yellow();
 			break;
 		case MOVE_F_THEN_B:
-			moveForwardAndBack();
+			readColor();
+			runLeftMotors(BACKWARD, 255);
+			runRightMotors(BACKWARD, 245);
+			while(isBlue(period)) {
+				readColor();
+				_delay_ms(100);
+			}
+			stopMotors(ALL);
+			
+			runLeftMotors(FORWARD, 255);
+			runRightMotors(FORWARD, 245);
+			
+			_delay_ms(3000);
+			
+			stopMotors(ALL);
+			
+			while(1){
+				_delay_ms(100);
+			}
+			
+			break;
+		case UTURN:
+			uturn();
+			while(1) {
+				_delay_ms(1000);
+			}
+			break;
+		case TESTING:
+			runLeftMotors(FORWARD, 255);
+			runRightMotors(FORWARD, 245);
+			
+			_delay_ms(6000);
+			
+			stopMotors(ALL);
+			
+			_delay_ms(1000);
+			
+			uturn();
+			
+			_delay_ms(1000);
+			
+			runLeftMotors(FORWARD, 200);
+			runRightMotors(FORWARD, 200);
+			
+			_delay_ms(9000);
+			
+			stopMotors(ALL);
+			
+			while(1) {
+				_delay_ms(1000);
+			}
 			break;
 		default:
-			_delay_ms(1000);
-			OCR2A = 128;
-			_delay_ms(1000);
-			OCR2A = 64;
 			break;
 		}		
 	}
