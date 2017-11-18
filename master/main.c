@@ -18,13 +18,19 @@
  *
  * --------------------------------
  *
- * Color Sensor Input	->	PB0
- * Color Sensor S0-S3	->	PD4-PD7
+ * Color Sensor Input			->	PB0
+ * Color Sensor S0-S3			->	PD4-PD7
  *
  * --------------------------------
  *
- * Random LED			->	PB1
+ * Random LED					->	PB1
  *
+ * --------------------------------
+ * QTI Sensor Configuration
+ *
+ * Forward Right				->	PC0
+ * Forward Left					->	PC1
+ * Backside						->	PC2
  * ************************************************
 */
 
@@ -47,10 +53,35 @@
 #define BLUE_LOW 150
 #define BLUE_HIGH 500
 
-enum states { FIND_YELLOW, MOVE_BACK, MOVE_F_THEN_B, NONE, TESTING, UTURN };
+enum states { MOVE_FORWARD, FIND_YELLOW, MOVE_BACK, MOVE_F_THEN_B, NONE, TESTING, UTURN };
 
 int period = 0;
 int timer_value = 0;
+
+// Globals that keep track of the QTI values. Note that 
+// you must manually poll these values. 
+int qtileft = 0;
+int qtiright = 0;
+int qtibot = 0;
+
+// Initializing the QTI sensors in the configuration specified in the header.
+void initQTI() {
+	DDRC &= 0b11111000;		// Setting as inputs
+}
+
+// Updates the values held within the QTI global variables. 
+void updateQTI() {
+	qtiright	= PINC & 0b00000001;
+	qtileft		= (PINC & 0b00000010) >> 1;
+	qtibot		= (PINC & 0b00000100) >> 2;
+}
+
+// Setting the motors. Assumes they are on PB3-5, and PD3.
+void initMotors() {
+	DDRB |= 0b00111000;
+	DDRD |= 0b00001000;
+	PORTB &= 0b11001111;
+}
 
 // Note that these PWM's only run in one direction. 
 void runPWM(int side, int magnitude) {
@@ -59,13 +90,6 @@ void runPWM(int side, int magnitude) {
 	} else if(side == RIGHT) {
 		OCR2B = magnitude;
 	}
-}
-
-// Setting the motors. Assumes they are on PB3-5, and PD3.
-void initMotors() {
-	DDRB |= 0b00111000;
-	DDRD |= 0b00001000;
-	PORTB &= 0b11001111;
 }
 
 void stopMotors(int arg) {
@@ -271,35 +295,76 @@ int main(void)
 	init_uart();    //initialize serial
 	initMotors();	// Initialize the motor systems.
 	initPWM();
+	initQTI();
 	initColor();   //initialize color sensor
 	initLED();     //initialize external LED
 	sei();      //enable global interrupts
 	
 	_delay_ms(1000);
 
-	enum states state = MOVE_F_THEN_B;
+	enum states state = MOVE_FORWARD;
 
 	while(1) {
 		switch(state) {
-
+			
+		case MOVE_FORWARD:	// This is actually a QTI follow the line routine.
+			updateQTI();
+			while(1) {
+				while(qtileft == 1 && qtiright == 1) {
+					runLeftMotors(FORWARD, 255);
+					runRightMotors(FORWARD, 245);
+					updateQTI();
+					_delay_ms(10);
+				}
+				
+				stopMotors(ALL);
+				
+				if(qtileft == 0 && qtiright == 0) {
+					while(1) {
+						// we have reached the end mang.
+						_delay_ms(1000);
+					}
+				}
+				
+				while(qtileft == 0) {
+					runRightMotors(FORWARD, 255);
+					updateQTI();
+					_delay_ms(10);
+				}
+				
+				stopMotors(ALL);
+				
+				while(qtiright == 0) {
+					runLeftMotors(FORWARD, 255);
+					updateQTI();
+					_delay_ms(10);
+				}
+			}
+			
+			break;
 		case MOVE_BACK:
-			move_back();
+			while(1) {
+				updateQTI();
+				printf("The value of the right QTI is %u, left QTI: %u, rear: %u\n", qtiright, qtileft, qtibot);
+				_delay_ms(500);
+			}
+			// move_back();
 			break;
 		case FIND_YELLOW:
 			find_yellow();
 			break;
 		case MOVE_F_THEN_B:
 			readColor();
-			runLeftMotors(BACKWARD, 255);
-			runRightMotors(BACKWARD, 245);
+			runLeftMotors(FORWARD, 255);
+			runRightMotors(FORWARD, 245);
 			while(isBlue(period)) {
 				readColor();
 				_delay_ms(100);
 			}
 			stopMotors(ALL);
 			
-			runLeftMotors(FORWARD, 255);
-			runRightMotors(FORWARD, 245);
+			runLeftMotors(BACKWARD, 255);
+			runRightMotors(BACKWARD, 245);
 			
 			_delay_ms(3000);
 			
