@@ -49,12 +49,16 @@
 #define BACKWARD 0
 #define FORWARD 1
 
+#define BLUE 0
+#define YELLOW 1
+
 #define PRESCALER 1
 #define BLUE_LOW 150
 #define BLUE_HIGH 500
 
 enum states { MOVE_FORWARD, FIND_YELLOW, MOVE_BACK, MOVE_F_THEN_B, NONE, TESTING, UTURN };
 
+int start_side = YELLOW;
 int period = 0;
 int timer_value = 0;
 
@@ -303,6 +307,9 @@ int main(void)
 	_delay_ms(1000);
 
 	enum states state = MOVE_FORWARD;
+	
+	readColor();
+	start_side = isBlue(period) ? BLUE : YELLOW;
 
 	while(1) {
 		switch(state) {
