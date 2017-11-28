@@ -3,14 +3,14 @@
  *
  * Created: 11/1/2017 2:12:29 PM
  * Author : Evan Zhao
- * 
+ *
  * The master code for MAE something competition!
  *
- * 
+ *
  * ************************************************
  * Wiring configurations:
  * ************************************************
- * 
+ *
  * Left Motor P0 (green)		->	PB5
  * Left Motor P1 (blue)			->	PB3		(PWM)
  * Right Motor P0 (blue)		->	PB4
@@ -52,18 +52,19 @@
 #define BLUE 0
 #define YELLOW 1
 
+#define BLACK 1
+#define NOT_BLACK 0
+
 #define PRESCALER 1
 #define BLUE_LOW 150
 #define BLUE_HIGH 500
-
-enum states { MOVE_FORWARD, FIND_YELLOW, MOVE_BACK, MOVE_F_THEN_B, NONE, TESTING, UTURN };
 
 int start_side = YELLOW;
 int period = 0;
 int timer_value = 0;
 
-// Globals that keep track of the QTI values. Note that 
-// you must manually poll these values. 
+// Globals that keep track of the QTI values. Note that
+// you must manually poll these values.
 int qtileft = 0;
 int qtiright = 0;
 int qtibot = 0;
@@ -73,7 +74,7 @@ void initQTI() {
 	DDRC &= 0b11111000;		// Setting as inputs
 }
 
-// Updates the values held within the QTI global variables. 
+// Updates the values held within the QTI global variables.
 void updateQTI() {
 	qtiright	= PINC & 0b00000001;
 	qtileft		= (PINC & 0b00000010) >> 1;
@@ -87,10 +88,10 @@ void initMotors() {
 	PORTB &= 0b11001111;
 }
 
-// Note that these PWM's only run in one direction. 
+// Note that these PWM's only run in one direction.
 void runPWM(int side, int magnitude) {
 	if(side == LEFT) {
-		OCR2A = magnitude;			// Set PWM for 50% duty cycle
+		OCR2A = magnitude;
 	} else if(side == RIGHT) {
 		OCR2B = magnitude;
 	}
@@ -134,7 +135,7 @@ void runRightMotors(int direction, int magnitude) {
 	} else if(direction == BACKWARD) {
 		runPWM(RIGHT, 0);
 		PORTB |= 0b00010000;
-	}	
+	}
 }
 
 void uturn() {
@@ -148,7 +149,7 @@ void uturn() {
 	return;
 }
 
-/* 
+/*
  *Interrupt for color sensor output
 */
 ISR(PCINT0_vect) {
@@ -156,7 +157,7 @@ ISR(PCINT0_vect) {
 	TCNT1 = 0;   //reset timer
 }
 
-/* 
+/*
  * Interrupt for color sensor and time
  * Also initializes the color sensor and timer
 */
@@ -177,7 +178,7 @@ void initColor() {
 }
 
 
-/* 
+/*
  * Reads color sensor. Returns an int.
 */
 int getColor() {
@@ -185,7 +186,7 @@ int getColor() {
 	_delay_ms(1);								// wait for ISR to calculate period. Max period is 250us < 1ms
 	PCMSK0 &= 0b11111110;						// disable interrupt
 	int doubled = timer_value * 2;				// timer_value is half of period. double for full period
-	int measured_period = doubled / 16;			// Scale the number of ticks we have counted by the amount of time each one is. 
+	int measured_period = doubled / 16;			// Scale the number of ticks we have counted by the amount of time each one is.
 
 	return measured_period;
 }
@@ -235,7 +236,7 @@ void initPWM() {
 	TCCR2A &= 0b10111111;	// Set the first PWM to be non-inverting mode.
 
 	TCCR2A |= 0b00100000;
-	TCCR2A &= 0b11101111;	// Set the second PWM to be non-inverting mode. 
+	TCCR2A &= 0b11101111;	// Set the second PWM to be non-inverting mode.
 
 	TCCR2A |= 0b00000011;	// Set fast PWM mode
 	TCCR2B &= 0b11110111;
@@ -254,26 +255,19 @@ void moveForwardAndBack() {
 
 		stopMotors(ALL);
 		disableLED();
-		
+
 		_delay_ms(1000);
-		
+
 		enableLED();
 		runRightMotors(BACKWARD, 0);
 		runLeftMotors(BACKWARD, 0);
 
 		_delay_ms(3000);
-		
+
 		disableLED();
 		stopMotors(ALL);
-		
-		_delay_ms(1000);
-	}
-}
 
-void move_back() {
-	while(1) {
-		runRightMotors(BACKWARD, 255);
-		runLeftMotors(BACKWARD, 255);		
+		_delay_ms(1000);
 	}
 }
 
@@ -285,12 +279,12 @@ void find_yellow() {
 		_delay_ms(100);
 		readColor();
 	}
-	
+
 	stopMotors(ALL);
 
 	while(1) {
 		runRightMotors(FORWARD, 255);
-		runLeftMotors(BACKWARD, 0);	
+		runLeftMotors(BACKWARD, 0);
 	}
 }
 
@@ -304,16 +298,75 @@ int main(void)
 	initLED();     //initialize external LED
 	sei();      //enable global interrupts
 	
-	_delay_ms(1000);
+	enum states { DEPOSIT, TURN_LEFT, ADVANCE_RIGHT, MOVE_FORWARD, FIND_YELLOW, QTI_READ, PUSH_BLOCK, NONE, TESTING, PLOW };
+	enum states state = ADVANCE_RIGHT;
 
-	enum states state = MOVE_FORWARD;
+	_delay_ms(1000);
+	
 	
 	readColor();
 	start_side = isBlue(period) ? BLUE : YELLOW;
-
+	
 	while(1) {
 		switch(state) {
+		case PLOW:
+			while(qtileft != BLACK && qtiright != BLACK) {
+				runLeftMotors(FORWARD, 240);
+				runRightMotors(FORWARD, 240);
+				_delay_ms(1500);
+				stopMotors(ALL);
+					
+				break;
+			}
+			state = DEPOSIT;	
+		
+		case TURN_LEFT:
+			stopMotors(ALL);
+			runLeftMotors(BACKWARD, 255);
+			runRightMotors(FORWARD, 255);
+			_delay_ms(800);
+			stopMotors(ALL);
 			
+			state = NONE;
+			
+		case ADVANCE_RIGHT:
+			updateQTI();
+			readColor();
+			while((isBlue(period) && start_side == BLUE) || (start_side == YELLOW && !isBlue(period))) {
+				printf("The value of the right QTI is %u, left QTI: %u, rear: %u\n", qtiright, qtileft, qtibot);
+				
+				if (qtileft == NOT_BLACK && qtiright == NOT_BLACK) {
+					runLeftMotors(FORWARD, 255);
+					runRightMotors(FORWARD, 240);
+				} else if(qtileft == NOT_BLACK && qtiright == BLACK) {
+					runLeftMotors(FORWARD, 240);
+					runRightMotors(FORWARD, 255);
+				} else if(qtileft == BLACK && qtiright == BLACK) {
+					runLeftMotors(BACKWARD, 255);
+					runRightMotors(BACKWARD, 255);
+				
+					_delay_ms(500);
+				
+					stopMotors(ALL);
+					runRightMotors(FORWARD, 230);
+				
+					_delay_ms(500);
+				
+					stopMotors(ALL);
+				} else if (qtileft == BLACK && qtiright == NOT_BLACK) {
+					runLeftMotors(FORWARD, 255);
+					runRightMotors(FORWARD, 240);
+				}
+				
+				updateQTI();
+				readColor();
+				_delay_ms(100);
+			}
+			while(1) {
+				_delay_ms(1000);
+			}
+			
+
 		case MOVE_FORWARD:	// This is actually a QTI follow the line routine.
 			updateQTI();
 			while(1) {
@@ -323,44 +376,43 @@ int main(void)
 					updateQTI();
 					_delay_ms(10);
 				}
-				
+
 				stopMotors(ALL);
-				
+
 				if(qtileft == 0 && qtiright == 0) {
 					while(1) {
 						// we have reached the end mang.
 						_delay_ms(1000);
 					}
 				}
-				
+
 				while(qtileft == 0) {
 					runRightMotors(FORWARD, 255);
 					updateQTI();
 					_delay_ms(10);
 				}
-				
+
 				stopMotors(ALL);
-				
+
 				while(qtiright == 0) {
 					runLeftMotors(FORWARD, 255);
 					updateQTI();
 					_delay_ms(10);
 				}
 			}
-			
+
 			break;
-		case MOVE_BACK:
+		case QTI_READ:
 			while(1) {
 				updateQTI();
 				printf("The value of the right QTI is %u, left QTI: %u, rear: %u\n", qtiright, qtileft, qtibot);
 				_delay_ms(500);
 			}
-			// move_back();
 			break;
 		case FIND_YELLOW:
 			find_yellow();
 			break;
-		case MOVE_F_THEN_B:
+		case PUSH_BLOCK:
 			readColor();
 			runLeftMotors(FORWARD, 255);
 			runRightMotors(FORWARD, 245);
@@ -369,53 +421,31 @@ int main(void)
 				_delay_ms(100);
 			}
 			stopMotors(ALL);
-			
+
 			runLeftMotors(BACKWARD, 255);
 			runRightMotors(BACKWARD, 245);
-			
+
 			_delay_ms(3000);
-			
+
 			stopMotors(ALL);
-			
+
 			while(1){
 				_delay_ms(100);
 			}
-			
-			break;
-		case UTURN:
-			uturn();
-			while(1) {
-				_delay_ms(1000);
-			}
+
 			break;
 		case TESTING:
-			runLeftMotors(FORWARD, 255);
-			runRightMotors(FORWARD, 245);
-			
-			_delay_ms(6000);
-			
+			//runLeftMotors(FORWARD, 255);
+			//runRightMotors(FORWARD, 255);
 			stopMotors(ALL);
-			
-			_delay_ms(1000);
-			
-			uturn();
-			
-			_delay_ms(1000);
-			
-			runLeftMotors(FORWARD, 200);
-			runRightMotors(FORWARD, 200);
-			
-			_delay_ms(9000);
-			
-			stopMotors(ALL);
-			
+			PORTD = 0b00001000;
+			PORTB = 0b00001000;
 			while(1) {
 				_delay_ms(1000);
 			}
 			break;
 		default:
 			break;
-		}		
+		}
 	}
 }
-
