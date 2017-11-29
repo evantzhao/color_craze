@@ -32,6 +32,9 @@
  * Forward Left					->	PC1
  * Backside						->	PC2
  * ************************************************
+ * Ultrasonic Sensor Configuration
+ *
+ * Thingy						-> PD2
 */
 
 #define F_CPU 16000000UL
@@ -53,7 +56,7 @@
 #define YELLOW 1
 
 #define BLACK 1
-#define NOT_BLACK 0
+#define NOT_BLACK 0 
 
 #define PRESCALER 1
 #define BLUE_LOW 150
@@ -68,6 +71,41 @@ int timer_value = 0;
 int qtileft = 0;
 int qtiright = 0;
 int qtibot = 0;
+
+int sonar_value = 0;
+
+ISR(PCINT1_vect) {
+	sonar_value = TCNT1;
+	TCNT1 = 0;   //reset timer
+}
+
+void initSonar() {
+	DDRC |= 0b00000100;	// Starts as an output
+
+	
+	PCICR	|=	0b00000010;		//enable PCIE1
+	// PCMSK1	|=	0b00001000;		//enable PCINT0 interrupt
+
+	TCCR1A	=	0x0;			//set timer to normal operation
+	TCCR1B	=	0x0;			//set timer to normal operation
+	SET_PRESCALER();			//set prescaler to 1
+	
+	while(1) {
+		DDRC |= 0b00001000;	// Starts as an output
+		PORTC |= 0b00001000;	// Set it to high
+		_delay_us(5);
+		PORTC &= 0b111110111;	// Set it to low
+		DDRC &= 0b11110111;		// Set it to input mode.
+		_delay_us(10);
+		PCMSK1	|=	0b00001000;		//enable PCINT0 interrupt
+		_delay_ms(100);
+		PCMSK1	&=	0b11110111;		// remask it.
+		
+		printf("The current registered distance is %u inches\n", (int)(sonar_value / 2 * 0.08475 / 100));
+		_delay_ms(1000);
+	}
+
+}
 
 // Initializing the QTI sensors in the configuration specified in the header.
 void initQTI() {
@@ -142,7 +180,7 @@ void uturn() {
 	runLeftMotors(FORWARD, 255);
 	runRightMotors(BACKWARD, 255);
 
-	_delay_ms(1260);
+	_delay_ms(1110);
 
 	stopMotors(ALL);
 
@@ -280,12 +318,28 @@ void find_yellow() {
 		readColor();
 	}
 
+	runRightMotors(BACKWARD, 0);
+	runLeftMotors(BACKWARD, 0);
+	
+	_delay_ms(600);
+	
 	stopMotors(ALL);
+}
 
-	while(1) {
-		runRightMotors(FORWARD, 255);
-		runLeftMotors(BACKWARD, 0);
-	}
+void turn_left() {
+	stopMotors(ALL);
+	runLeftMotors(BACKWARD, 255);
+	runRightMotors(FORWARD, 255);
+	_delay_ms(545);
+	stopMotors(ALL);
+}
+
+void turn_right() {
+	stopMotors(ALL);
+	runLeftMotors(FORWARD, 255);
+	runRightMotors(BACKWARD, 255);
+	_delay_ms(545);
+	stopMotors(ALL);
 }
 
 int main(void)
@@ -297,10 +351,11 @@ int main(void)
 	initColor();   //initialize color sensor
 	initLED();     //initialize external LED
 	sei();      //enable global interrupts
+	// initSonar();
+	enum states { HOO, DEPOSIT_LEFT, DEPOSIT_RIGHT, ADVANCE_RIGHT, MOVE_FORWARD, FIND_YELLOW, QTI_READ, PUSH_BLOCK, NONE, TESTING, PLOW };
+	enum states state = FIND_YELLOW;
 	
-	enum states { DEPOSIT, TURN_LEFT, ADVANCE_RIGHT, MOVE_FORWARD, FIND_YELLOW, QTI_READ, PUSH_BLOCK, NONE, TESTING, PLOW };
-	enum states state = ADVANCE_RIGHT;
-
+	int ticks_count = 0;
 	_delay_ms(1000);
 	
 	
@@ -309,25 +364,53 @@ int main(void)
 	
 	while(1) {
 		switch(state) {
-		case PLOW:
-			while(qtileft != BLACK && qtiright != BLACK) {
-				runLeftMotors(FORWARD, 240);
-				runRightMotors(FORWARD, 240);
-				_delay_ms(1500);
-				stopMotors(ALL);
-					
-				break;
+		case HOO:
+			turn_right();
+			_delay_ms(1000);
+			turn_left();
+			while(1) {
+				_delay_ms(1000);
 			}
-			state = DEPOSIT;	
-		
-		case TURN_LEFT:
-			stopMotors(ALL);
-			runLeftMotors(BACKWARD, 255);
+			break;
+		case DEPOSIT_RIGHT:
+			turn_right();
+			runLeftMotors(FORWARD, 255);
 			runRightMotors(FORWARD, 255);
-			_delay_ms(800);
+			_delay_ms(1000);
+			runLeftMotors(BACKWARD, 255);
+			runRightMotors(BACKWARD, 255);
+			_delay_ms(1000);
+			
 			stopMotors(ALL);
 			
-			state = NONE;
+			turn_left();
+			
+			state = PLOW;
+			
+		case FIND_YELLOW:
+			find_yellow();
+			turn_left();
+			
+			state = PLOW;
+		case PLOW:
+		
+			ticks_count = 0;
+			while(qtileft != BLACK && qtiright != BLACK) {
+				runLeftMotors(FORWARD, 255);
+				runRightMotors(FORWARD, 255);
+				updateQTI();
+				_delay_ms(100);
+				
+				ticks_count++;	
+				if(ticks_count == 300) break;
+			}
+			
+			if(qtileft == BLACK && qtiright == BLACK) {
+				uturn();
+				state = PLOW;
+			} else {
+				state = DEPOSIT_RIGHT;
+			}
 			
 		case ADVANCE_RIGHT:
 			updateQTI();
@@ -409,9 +492,6 @@ int main(void)
 				_delay_ms(500);
 			}
 			break;
-		case FIND_YELLOW:
-			find_yellow();
-			break;
 		case PUSH_BLOCK:
 			readColor();
 			runLeftMotors(FORWARD, 255);
@@ -435,13 +515,26 @@ int main(void)
 
 			break;
 		case TESTING:
-			//runLeftMotors(FORWARD, 255);
-			//runRightMotors(FORWARD, 255);
-			stopMotors(ALL);
-			PORTD = 0b00001000;
-			PORTB = 0b00001000;
+			// lf, rb -> both backwards
+			// lb, rf -> both forward
+			updateQTI();
 			while(1) {
-				_delay_ms(1000);
+				printf("left: %u, right: %u\n", qtileft, qtiright);
+				if (qtileft == NOT_BLACK && qtiright == NOT_BLACK) {
+					runLeftMotors(FORWARD, 255);
+					runRightMotors(FORWARD, 255);
+				} else if(qtileft == NOT_BLACK && qtiright == BLACK) {
+					runLeftMotors(BACKWARD, 255);
+					runRightMotors(FORWARD, 255);
+				} else if(qtileft == BLACK && qtiright == BLACK) {
+					runLeftMotors(BACKWARD, 255);
+					runRightMotors(BACKWARD, 255);
+				} else if (qtiright == NOT_BLACK && qtileft == BLACK) {
+					runLeftMotors(FORWARD, 255);
+					runRightMotors(BACKWARD, 255);
+				}
+				updateQTI();
+				_delay_ms(100);
 			}
 			break;
 		default:
